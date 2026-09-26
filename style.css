@@ -283,6 +283,18 @@ input { font: inherit; color: inherit; }
 }
 .field input:focus { outline: none; border-color: var(--accent); }
 
+/* iOS Safari: datumvelden vallen anders buiten het scherm */
+.field input[type=date] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 52px;
+  text-align: left;
+}
+.field input[type=date]::-webkit-date-and-time-value { text-align: left; }
+
 .emoji-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .emoji-input {
   width: 64px; height: 64px;

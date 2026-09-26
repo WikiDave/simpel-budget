@@ -4,6 +4,12 @@ Budgetplanner in de browser: plain HTML/CSS/JS (`index.html`, `app.js`,
 `style.css`), geen build-stap. Gegevens staan in `localStorage`.
 Live via GitHub Pages vanaf `main`: https://wikidave.github.io/simpel-budget/
 
+## Cache
+
+GitHub Pages laat browsers bestanden 10 minuten cachen. Verhoog daarom bij
+elke wijziging aan `app.js` of `style.css` het versienummer `?v=N` in
+`index.html`, zodat telefoons meteen de nieuwe versie laden.
+
 ## Werkwijze voor elke wijziging (verplicht)
 
 1. **Nooit rechtstreeks op `main` werken of pushen.** Maak voor elke
