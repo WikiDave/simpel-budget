@@ -42,12 +42,25 @@ const TABS = {
 
 const DEFAULT_ENV_EMOJI = '💰';
 
+// Kleuren: thema (achtergrond) en accentkleur, in te stellen via 🎨
+const THEMES = [
+  { id: 'zwart', name: 'Zwart', bg: '#000000' },
+  { id: 'donker', name: 'Donker', bg: '#0f172a' },
+  { id: 'licht', name: 'Licht', bg: '#f2f2f7' },
+];
+const ACCENTS = [
+  ['Blauw', '#3b82f6'], ['Paars', '#8b5cf6'], ['Roze', '#ec4899'], ['Rood', '#ef4444'],
+  ['Oranje', '#f97316'], ['Geel', '#eab308'], ['Groen', '#22c55e'], ['Turquoise', '#14b8a6'],
+];
+const DEFAULT_SETTINGS = { theme: 'zwart', accent: '#3b82f6' };
+
 const MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli',
   'augustus', 'september', 'oktober', 'november', 'december'];
 
 const euro = new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' });
 
 // ===== STATE =====
+// state: { envs: [env], settings: { theme, accent } }
 // env: { id, name, emoji, costs: [item], income: [item], savings: [item],
 //        paid: { 'itemId@YYYY-MM-DD': true } }  (betaald / opzij gezet)
 // item: { id, name, emoji, amount, freq: once|daily|weekly|monthly|yearly, every: N (om de N),
@@ -74,6 +87,7 @@ function load() {
     env.savings ||= [];
     env.paid ||= {};
   });
+  state.settings = { ...DEFAULT_SETTINGS, ...(state.settings || {}) };
 }
 
 function save() {
@@ -654,8 +668,87 @@ function deleteItem(id) {
   renderEnv();
 }
 
+// ===== KLEUREN =====
+function applySettings() {
+  const { theme, accent } = state.settings;
+  const root = document.documentElement;
+  root.dataset.theme = theme;
+  root.style.setProperty('--accent', accent);
+  const bg = (THEMES.find(t => t.id === theme) || THEMES[0]).bg;
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', bg);
+}
+
+function openSettings() {
+  const { theme, accent } = state.settings;
+  const isPreset = ACCENTS.some(([, c]) => c === accent);
+  openSheet('🎨 Kleuren', `
+    <div class="field">
+      <span>Thema</span>
+      <div class="theme-picker">
+        ${THEMES.map(t => `
+          <button type="button" class="theme-opt ${t.id === theme ? 'sel' : ''}" data-theme-id="${t.id}"
+            onclick="setTheme('${t.id}')">
+            <span class="theme-dot" style="background:${t.bg}"></span>${t.name}
+          </button>`).join('')}
+      </div>
+    </div>
+    <div class="field">
+      <span>Accentkleur <small>(knoppen, vinkjes en selecties)</small></span>
+      <div class="swatches">
+        ${ACCENTS.map(([name, c]) => `
+          <button type="button" class="swatch ${c === accent ? 'sel' : ''}" data-color="${c}"
+            style="background:${c}" aria-label="${name}" title="${name}" onclick="setAccent('${c}')"></button>`).join('')}
+        <label class="swatch custom ${isPreset ? '' : 'sel'}" title="Eigen kleur" aria-label="Eigen kleur">
+          <input type="color" id="f-color" value="${accent}" oninput="setAccent(this.value)" />
+        </label>
+      </div>
+    </div>
+    <p class="color-preview">Je ziet de kleuren meteen veranderen. Vinkjes en bedragen houden hun eigen kleur
+      (groen = betaald / binnen, rood = tekort).</p>
+    <button class="primary" type="button" onclick="closeSheet()">Klaar</button>
+    <button class="ghost" type="button" onclick="resetColors()">Standaardkleuren herstellen</button>`);
+}
+
+// Selecties in het kleurenscherm bijwerken zonder het opnieuw te tekenen
+// (anders sluit de kleurkiezer van je telefoon terwijl je kiest)
+function markSettings() {
+  const { theme, accent } = state.settings;
+  document.querySelectorAll('.theme-opt').forEach(b => b.classList.toggle('sel', b.dataset.themeId === theme));
+  let preset = false;
+  document.querySelectorAll('.swatch[data-color]').forEach(b => {
+    const on = b.dataset.color === accent;
+    preset ||= on;
+    b.classList.toggle('sel', on);
+  });
+  document.querySelector('.swatch.custom')?.classList.toggle('sel', !preset);
+}
+
+function setTheme(id) {
+  state.settings.theme = id;
+  save();
+  applySettings();
+  markSettings();
+}
+
+function setAccent(color) {
+  state.settings.accent = color;
+  save();
+  applySettings();
+  markSettings();
+}
+
+function resetColors() {
+  state.settings = { ...DEFAULT_SETTINGS };
+  save();
+  applySettings();
+  markSettings();
+  const input = document.getElementById('f-color');
+  if (input) input.value = DEFAULT_SETTINGS.accent;
+}
+
 // ===== INIT =====
 load();
+applySettings();
 const startId = location.hash.slice(1);
 if (startId && state.envs.some(e => e.id === startId)) openEnv(startId);
 else goHome();
