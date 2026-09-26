@@ -9,10 +9,21 @@ const FREQ = {
 };
 const FREQ_ORDER = ['monthly', 'weekly', 'yearly', 'once'];
 
+// Tabbladen in een omgeving; 'list' is de sleutel van de lijst in env
+const TABS = {
+  costs: { list: 'costs', add: 'Voeg kost toe', title: 'Nieuwe kost', plural: 'kosten',
+    emoji: '🧾', placeholder: 'bv. Huur, Netflix, Engie', done: 'betaald' },
+  income: { list: 'income', add: 'Voeg inkomen toe', title: 'Nieuw inkomen', plural: 'inkomsten',
+    emoji: '💶', placeholder: 'bv. Loon, Kinderbijslag' },
+  savings: { list: 'savings', add: 'Voeg spaarpot toe', title: 'Nieuwe spaarpot', plural: 'spaarpotten',
+    emoji: '🐷', placeholder: 'bv. Vakantie, Noodfonds, Nieuwe auto', done: 'opzij gezet' },
+};
+
 const ENV_EMOJIS = ['🏠', '💰', '👹', '🐸', '🌲', '🌆', '🌚', '🧬', '✈️', '🚗', '🎓', '🍕',
   '🛒', '💼', '🎉', '🐶', '👶', '💍', '🏖️', '🎮', '🏦', '📦', '❤️', '⭐'];
 const ITEM_EMOJIS = ['🏠', '⚡', '💧', '🔥', '📱', '🌐', '🛒', '🚗', '⛽', '🚆', '🍕', '☕',
-  '🎬', '🎵', '🎮', '🏋️', '💊', '🐶', '👕', '🎁', '📚', '💳', '🧾', '✈️', '💼', '💶'];
+  '🎬', '🎵', '🎮', '🏋️', '💊', '🐶', '👕', '🎁', '📚', '💳', '🧾', '✈️', '💼', '💶',
+  '🐷', '🏖️', '🎯', '🚨', '💍', '🎄'];
 
 const MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli',
   'augustus', 'september', 'oktober', 'november', 'december'];
@@ -20,8 +31,10 @@ const MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli',
 const euro = new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' });
 
 // ===== STATE =====
-// env: { id, name, emoji, costs: [item], income: [item], paid: { 'itemId@YYYY-MM-DD': true } }
-// item: { id, name, emoji, amount, freq, date: 'YYYY-MM-DD', endDate: 'YYYY-MM-DD'|'' }
+// env: { id, name, emoji, costs: [item], income: [item], savings: [item],
+//        paid: { 'itemId@YYYY-MM-DD': true } }  (betaald / opzij gezet)
+// item: { id, name, emoji, amount, freq, date: 'YYYY-MM-DD', endDate: 'YYYY-MM-DD'|'',
+//         goal?: number (alleen spaarpotten) }
 let state = { envs: [] };
 let currentEnvId = null;
 let currentTab = 'costs';
@@ -36,6 +49,13 @@ function load() {
     if (raw) state = JSON.parse(raw);
   } catch (_) { /* start leeg */ }
   if (!state || !Array.isArray(state.envs)) state = { envs: [] };
+  // Oudere omgevingen hebben nog geen spaarpotten
+  state.envs.forEach(env => {
+    env.costs ||= [];
+    env.income ||= [];
+    env.savings ||= [];
+    env.paid ||= {};
+  });
 }
 
 function save() {
@@ -109,16 +129,38 @@ function occurrences(item, y, m) {
 }
 
 function monthSummary(env, y, m) {
-  let income = 0, costs = 0, paid = 0, count = 0, paidCount = 0;
+  let income = 0, count = 0, doneCount = 0;
   env.income.forEach(i => { income += occurrences(i, y, m).length * i.amount; });
-  env.costs.forEach(c => {
-    occurrences(c, y, m).forEach(d => {
-      costs += c.amount;
-      count++;
-      if (env.paid[`${c.id}@${dateKey(d)}`]) { paid += c.amount; paidCount++; }
+
+  // Totaal en afgevinkt deel van kosten of spaarpotten
+  const tally = items => {
+    let total = 0, done = 0;
+    items.forEach(it => {
+      occurrences(it, y, m).forEach(d => {
+        total += it.amount;
+        count++;
+        if (env.paid[`${it.id}@${dateKey(d)}`]) { done += it.amount; doneCount++; }
+      });
     });
-  });
-  return { income, costs, paid, open: costs - paid, left: income - costs, available: income - paid, count, paidCount };
+    return [total, done];
+  };
+  const [costs, paid] = tally(env.costs);
+  const [savings, saved] = tally(env.savings);
+
+  return {
+    income, costs, paid, savings, saved,
+    open: costs - paid,
+    toSave: savings - saved,
+    play: income - costs - savings,      // speelgeld
+    available: income - paid - saved,    // wat nu echt nog op de rekening staat
+    count, doneCount,
+  };
+}
+
+// Alles wat ooit in deze spaarpot is opzij gezet (afgevinkt)
+function totalSaved(env, item) {
+  const prefix = item.id + '@';
+  return Object.keys(env.paid).filter(k => k.startsWith(prefix)).length * item.amount;
 }
 
 // ===== NAVIGATIE =====
@@ -171,9 +213,9 @@ function renderHome() {
 
   list.innerHTML = state.envs.map(env => {
     const s = monthSummary(env, y, m);
-    const hasData = env.costs.length || env.income.length;
+    const hasData = env.costs.length || env.income.length || env.savings.length;
     const sub = hasData
-      ? `Over in ${MONTHS[m]}: <b class="${s.left < 0 ? 'neg' : 'pos'}">${euro.format(s.left)}</b>`
+      ? `Speelgeld in ${MONTHS[m]}: <b class="${s.play < 0 ? 'neg' : 'pos'}">${euro.format(s.play)}</b>`
       : 'Nog leeg';
     return `
       <button class="env-card" onclick="openEnv('${env.id}')">
@@ -202,8 +244,7 @@ function renderEnv() {
   label.classList.toggle('is-now', isNow);
 
   document.querySelectorAll('.seg').forEach(b => b.classList.toggle('active', b.dataset.tab === currentTab));
-  document.getElementById('fab-item-label').textContent =
-    currentTab === 'costs' ? 'Voeg kost toe' : 'Voeg inkomen toe';
+  document.getElementById('fab-item-label').textContent = TABS[currentTab].add;
 
   renderSummary(env);
   renderItems(env);
@@ -211,48 +252,59 @@ function renderEnv() {
 
 function renderSummary(env) {
   const s = monthSummary(env, viewYear, viewMonth);
-  const pct = s.costs > 0 ? Math.round((s.paid / s.costs) * 100) : 0;
+  const due = s.costs + s.savings;
+  const pct = due > 0 ? Math.round(((s.paid + s.saved) / due) * 100) : 0;
 
   document.getElementById('summary').innerHTML = `
     <div class="summary-main">
-      <span class="summary-label">Over deze maand</span>
-      <span class="summary-big ${s.left < 0 ? 'neg' : 'pos'}">${euro.format(s.left)}</span>
-      <span class="summary-hint">inkomsten − alle kosten</span>
+      <span class="summary-label">Speelgeld deze maand</span>
+      <span class="summary-big ${s.play < 0 ? 'neg' : 'pos'}">${euro.format(s.play)}</span>
+      <span class="summary-hint">inkomsten − kosten − sparen · vrij te besteden</span>
     </div>
     <div class="summary-grid">
       <div><span>Binnengekomen</span><b class="pos">${euro.format(s.income)}</b></div>
       <div><span>Totale kosten</span><b>${euro.format(s.costs)}</b></div>
+      <div><span>Sparen</span><b class="save">${euro.format(s.savings)}</b></div>
       <div><span>Al betaald</span><b>${euro.format(s.paid)}</b></div>
       <div><span>Nog te betalen</span><b class="${s.open > 0 ? 'warn' : ''}">${euro.format(s.open)}</b></div>
+      <div><span>Nog opzij te zetten</span><b class="${s.toSave > 0 ? 'warn' : ''}">${euro.format(s.toSave)}</b></div>
     </div>
     <div class="progress">
       <div class="progress-bar" style="width:${pct}%"></div>
     </div>
     <div class="progress-text">
-      <span>${s.paidCount}/${s.count} betaald</span>
+      <span>${s.doneCount}/${s.count} afgevinkt</span>
       <span>Nu beschikbaar: <b class="${s.available < 0 ? 'neg' : ''}">${euro.format(s.available)}</b></span>
     </div>`;
 }
 
 function renderItems(env) {
   const list = document.getElementById('item-list');
-  const items = currentTab === 'costs' ? env.costs : env.income;
-  const isCost = currentTab === 'costs';
+  const tab = TABS[currentTab];
+  const items = env[tab.list];
 
   // Items met een voorkomen in deze maand, gegroepeerd per frequentie
   const active = items
     .map(item => ({ item, dates: occurrences(item, viewYear, viewMonth) }))
     .filter(x => x.dates.length);
 
+  // Spaarpotten: totaal dat al opzij staat, over alle maanden heen
+  const potTotal = currentTab === 'savings' && items.length
+    ? `<div class="pot-total"><span>🐷 Totaal in je spaarpotten</span>
+        <b>${euro.format(items.reduce((sum, it) => sum + totalSaved(env, it), 0))}</b></div>`
+    : '';
+
   if (!active.length) {
     const other = items.length
-      ? `Geen ${isCost ? 'kosten' : 'inkomsten'} in ${MONTHS[viewMonth]}.`
-      : `Nog geen ${isCost ? 'kosten' : 'inkomsten'}. Tik op + om er een toe te voegen.`;
-    list.innerHTML = `<div class="empty small"><p>${other}</p></div>`;
+      ? `Geen ${tab.plural} in ${MONTHS[viewMonth]}.`
+      : currentTab === 'savings'
+        ? 'Nog geen spaarpotten. Tik op + om geld opzij te zetten, bv. elke maand € 100 voor vakantie.'
+        : `Nog geen ${tab.plural}. Tik op + om er een toe te voegen.`;
+    list.innerHTML = `${potTotal}<div class="empty small"><p>${other}</p></div>`;
     return;
   }
 
-  list.innerHTML = FREQ_ORDER.map(freq => {
+  list.innerHTML = potTotal + FREQ_ORDER.map(freq => {
     const group = active
       .filter(x => x.item.freq === freq)
       .sort((a, b) => a.dates[0] - b.dates[0]);
@@ -260,23 +312,24 @@ function renderItems(env) {
     const total = group.reduce((sum, x) => sum + x.dates.length * x.item.amount, 0);
     return `
       <h3 class="group-title"><span>${FREQ[freq]}</span><span>${euro.format(total)}</span></h3>
-      ${group.map(x => isCost ? costRow(env, x.item, x.dates) : incomeRow(x.item, x.dates)).join('')}`;
+      ${group.map(x => tab.done ? checkRow(env, x.item, x.dates, tab) : incomeRow(x.item, x.dates)).join('')}`;
   }).join('');
 }
 
-function costRow(env, item, dates) {
+// Rij met vinkjes: voor kosten (betaald) en spaarpotten (opzij gezet)
+function checkRow(env, item, dates, tab) {
   const keys = dates.map(d => `${item.id}@${dateKey(d)}`);
   const allPaid = keys.every(k => env.paid[k]);
   const total = item.amount * dates.length;
 
   let checks;
   if (dates.length === 1) {
-    checks = `<button class="check ${allPaid ? 'on' : ''}" aria-label="Betaald"
+    checks = `<button class="check ${allPaid ? 'on' : ''}" aria-label="${tab.done}"
       onclick="event.stopPropagation(); togglePaid('${keys[0]}')"></button>`;
   } else {
     // Wekelijks: één vakje per week
     checks = `<div class="week-checks">${dates.map((d, i) => `
-      <button class="week-check ${env.paid[keys[i]] ? 'on' : ''}" aria-label="Betaald ${d.getDate()} ${MONTHS[d.getMonth()]}"
+      <button class="week-check ${env.paid[keys[i]] ? 'on' : ''}" aria-label="${tab.done} ${d.getDate()} ${MONTHS[d.getMonth()]}"
         onclick="event.stopPropagation(); togglePaid('${keys[i]}')">${d.getDate()}</button>`).join('')}
     </div>`;
   }
@@ -285,12 +338,26 @@ function costRow(env, item, dates) {
     ? `${dates[0].getDate()} ${MONTHS[dates[0].getMonth()].slice(0, 3)}`
     : `${dates.length}× ${euro.format(item.amount)}`;
 
+  // Spaarpot: hoeveel er al in zit, en eventueel voortgang naar het doel
+  let pot = '';
+  if (currentTab === 'savings') {
+    const inPot = totalSaved(env, item);
+    if (item.goal > 0) {
+      const pct = Math.min(100, Math.round((inPot / item.goal) * 100));
+      pot = `<span class="pot-info">${euro.format(inPot)} van ${euro.format(item.goal)} · ${pct}%</span>
+        <span class="pot-bar"><span style="width:${pct}%"></span></span>`;
+    } else {
+      pot = `<span class="pot-info">Al gespaard: ${euro.format(inPot)}</span>`;
+    }
+  }
+
   return `
     <div class="item ${allPaid ? 'paid' : ''}" onclick="openItemForm('${item.id}')">
-      <span class="item-emoji">${esc(item.emoji || '🧾')}</span>
+      <span class="item-emoji">${esc(item.emoji || tab.emoji)}</span>
       <span class="item-text">
         <span class="item-name">${esc(item.name)}</span>
-        <span class="item-sub">${sub}${allPaid ? ' · <b>betaald</b>' : ''}</span>
+        <span class="item-sub">${sub}${allPaid ? ` · <b>${tab.done}</b>` : ''}</span>
+        ${pot}
         ${dates.length > 1 ? checks : ''}
       </span>
       <span class="item-amount">${euro.format(total)}</span>
@@ -388,7 +455,7 @@ function saveEnv(e, id) {
     closeSheet();
     renderEnv();
   } else {
-    const env = { id: uid(), name, emoji, costs: [], income: [], paid: {} };
+    const env = { id: uid(), name, emoji, costs: [], income: [], savings: [], paid: {} };
     state.envs.push(env);
     save();
     closeSheet();
@@ -420,33 +487,33 @@ function duplicateEnv() {
 
 function deleteEnv() {
   const env = getEnv();
-  if (!confirm(`"${env.name}" en alle kosten erin verwijderen?`)) return;
+  if (!confirm(`"${env.name}" en alles erin verwijderen?`)) return;
   state.envs = state.envs.filter(e => e.id !== env.id);
   save();
   closeSheet();
   goHome();
 }
 
-// ----- Kost / inkomen aanmaken / bewerken -----
+// ----- Kost / inkomen / spaarpot aanmaken / bewerken -----
 function openItemForm(id) {
   const env = getEnv();
-  const isCost = currentTab === 'costs';
-  const items = isCost ? env.costs : env.income;
+  const tab = TABS[currentTab];
+  const items = env[tab.list];
   const item = id ? items.find(x => x.id === id) : null;
 
   const isNow = viewYear === today.getFullYear() && viewMonth === today.getMonth();
   const defaultDate = isNow ? dateKey(today) : dateKey(new Date(viewYear, viewMonth, 1));
   const freq = item ? item.freq : 'monthly';
 
-  openSheet(`${item ? 'Bewerken' : (isCost ? 'Nieuwe kost' : 'Nieuw inkomen')}`, `
+  openSheet(`${item ? 'Bewerken' : tab.title}`, `
     <form onsubmit="saveItem(event, ${item ? `'${item.id}'` : 'null'})">
-      ${emojiPicker(ITEM_EMOJIS, item ? item.emoji : (isCost ? '🧾' : '💶'))}
+      ${emojiPicker(ITEM_EMOJIS, item ? item.emoji : tab.emoji)}
       <label class="field">
         <span>Omschrijving</span>
-        <input id="f-name" required maxlength="80" placeholder="${isCost ? 'bv. Huur, Netflix, Engie' : 'bv. Loon, Kinderbijslag'}" value="${esc(item?.name)}" />
+        <input id="f-name" required maxlength="80" placeholder="${tab.placeholder}" value="${esc(item?.name)}" />
       </label>
       <label class="field">
-        <span>Bedrag (€)</span>
+        <span>${currentTab === 'savings' ? 'Hoeveel opzij zetten? (€)' : 'Bedrag (€)'}</span>
         <input id="f-amount" required inputmode="decimal" placeholder="0,00"
           value="${item ? String(item.amount).replace('.', ',') : ''}" />
       </label>
@@ -466,6 +533,12 @@ function openItemForm(id) {
         <span>Einddatum <small>(optioneel)</small></span>
         <input id="f-end" type="date" value="${item?.endDate || ''}" />
       </label>
+      ${currentTab === 'savings' ? `
+      <label class="field">
+        <span>Spaardoel (€) <small>(optioneel)</small></span>
+        <input id="f-goal" inputmode="decimal" placeholder="bv. 1500"
+          value="${item?.goal ? String(item.goal).replace('.', ',') : ''}" />
+      </label>` : ''}
       <button class="primary" type="submit">${item ? 'Opslaan' : 'Toevoegen'}</button>
       <button class="ghost" type="button" onclick="closeSheet()">Annuleren</button>
       ${item ? `<button class="ghost danger" type="button" onclick="deleteItem('${item.id}')">Verwijderen</button>` : ''}
@@ -483,7 +556,7 @@ function updateFreqFields() {
 function saveItem(e, id) {
   e.preventDefault();
   const env = getEnv();
-  const items = currentTab === 'costs' ? env.costs : env.income;
+  const items = env[TABS[currentTab].list];
 
   const amount = parseAmount(document.getElementById('f-amount').value);
   if (!(amount >= 0)) {
@@ -499,6 +572,10 @@ function saveItem(e, id) {
     date: document.getElementById('f-date').value,
     endDate: freq === 'once' ? '' : document.getElementById('f-end').value,
   };
+  if (currentTab === 'savings') {
+    const goal = parseAmount(document.getElementById('f-goal').value);
+    data.goal = goal > 0 ? goal : null;
+  }
 
   if (id) Object.assign(items.find(x => x.id === id), data);
   else items.push({ id: uid(), ...data });
@@ -513,6 +590,7 @@ function deleteItem(id) {
   if (!confirm('Dit item verwijderen?')) return;
   env.costs = env.costs.filter(x => x.id !== id);
   env.income = env.income.filter(x => x.id !== id);
+  env.savings = env.savings.filter(x => x.id !== id);
   Object.keys(env.paid).forEach(k => { if (k.startsWith(id + '@')) delete env.paid[k]; });
   save();
   closeSheet();
