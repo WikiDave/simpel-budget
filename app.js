@@ -7,7 +7,28 @@ const FREQ = {
   monthly: 'Maandelijks',
   yearly: 'Jaarlijks',
 };
-const FREQ_ORDER = ['monthly', 'weekly', 'yearly', 'once'];
+const FREQ_ORDER = ['monthly', 'weekly', 'daily', 'yearly', 'once'];
+
+// Eenheden voor een eigen herhaling: "om de N dagen/weken/maanden/jaar"
+const UNITS = {
+  daily: ['dag', 'dagen'],
+  weekly: ['week', 'weken'],
+  monthly: ['maand', 'maanden'],
+  yearly: ['jaar', 'jaar'],
+};
+
+// Aantal keer eenheid tussen twee herhalingen (oudere items hebben geen 'every')
+const everyOf = item => Math.max(1, parseInt(item.every, 10) || 1);
+
+function freqLabel(item) {
+  const n = everyOf(item);
+  if (item.freq === 'once') return FREQ.once;
+  if (n === 1) return item.freq === 'daily' ? 'Dagelijks' : FREQ[item.freq];
+  return `Om de ${n} ${UNITS[item.freq][1]}`;
+}
+
+// Is dit een herhaling die niet in de vaste knoppen past?
+const isCustom = item => item.freq === 'daily' || everyOf(item) > 1;
 
 // Tabbladen in een omgeving; 'list' is de sleutel van de lijst in env
 const TABS = {
@@ -33,7 +54,8 @@ const euro = new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR'
 // ===== STATE =====
 // env: { id, name, emoji, costs: [item], income: [item], savings: [item],
 //        paid: { 'itemId@YYYY-MM-DD': true } }  (betaald / opzij gezet)
-// item: { id, name, emoji, amount, freq, date: 'YYYY-MM-DD', endDate: 'YYYY-MM-DD'|'',
+// item: { id, name, emoji, amount, freq: once|daily|weekly|monthly|yearly, every: N (om de N),
+//         date: 'YYYY-MM-DD', endDate: 'YYYY-MM-DD'|'',
 //         goal?: number (alleen spaarpotten) }
 let state = { envs: [] };
 let currentEnvId = null;
@@ -91,31 +113,38 @@ function occurrences(item, y, m) {
   const monthStart = new Date(y, m, 1);
   const monthEnd = new Date(y, m + 1, 0);
   const dim = monthEnd.getDate();
+  const n = everyOf(item);
   let dates = [];
 
   switch (item.freq) {
     case 'once':
       if (start.getFullYear() === y && start.getMonth() === m) dates = [start];
       break;
-    case 'monthly':
-      if (monthStart >= new Date(start.getFullYear(), start.getMonth(), 1)) {
+    case 'monthly': {
+      const diff = (y - start.getFullYear()) * 12 + (m - start.getMonth());
+      if (diff >= 0 && diff % n === 0) {
         dates = [new Date(y, m, Math.min(start.getDate(), dim))];
       }
       break;
-    case 'yearly':
-      if (start.getMonth() === m && y >= start.getFullYear()) {
+    }
+    case 'yearly': {
+      const diff = y - start.getFullYear();
+      if (start.getMonth() === m && diff >= 0 && diff % n === 0) {
         dates = [new Date(y, m, Math.min(start.getDate(), dim))];
       }
       break;
+    }
+    case 'daily':
     case 'weekly': {
+      const step = item.freq === 'weekly' ? 7 * n : n;
       let d = new Date(start);
       if (d < monthStart) {
         const days = Math.round((monthStart - d) / 864e5);
-        d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + Math.ceil(days / 7) * 7);
+        d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + Math.ceil(days / step) * step);
       }
       while (d <= monthEnd) {
         dates.push(d);
-        d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7);
+        d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + step);
       }
       break;
     }
@@ -304,14 +333,21 @@ function renderItems(env) {
     return;
   }
 
-  list.innerHTML = potTotal + FREQ_ORDER.map(freq => {
-    const group = active
-      .filter(x => x.item.freq === freq)
-      .sort((a, b) => a.dates[0] - b.dates[0]);
-    if (!group.length) return '';
+  // Groeperen per herhaling (bv. "Maandelijks", "Om de 3 dagen")
+  const groups = new Map();
+  active
+    .sort((a, b) => FREQ_ORDER.indexOf(a.item.freq) - FREQ_ORDER.indexOf(b.item.freq)
+      || everyOf(a.item) - everyOf(b.item) || a.dates[0] - b.dates[0])
+    .forEach(x => {
+      const label = freqLabel(x.item);
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label).push(x);
+    });
+
+  list.innerHTML = potTotal + [...groups].map(([label, group]) => {
     const total = group.reduce((sum, x) => sum + x.dates.length * x.item.amount, 0);
     return `
-      <h3 class="group-title"><span>${FREQ[freq]}</span><span>${euro.format(total)}</span></h3>
+      <h3 class="group-title"><span>${label}</span><span>${euro.format(total)}</span></h3>
       ${group.map(x => tab.done ? checkRow(env, x.item, x.dates, tab) : incomeRow(x.item, x.dates)).join('')}`;
   }).join('');
 }
@@ -503,7 +539,9 @@ function openItemForm(id) {
 
   const isNow = viewYear === today.getFullYear() && viewMonth === today.getMonth();
   const defaultDate = isNow ? dateKey(today) : dateKey(new Date(viewYear, viewMonth, 1));
-  const freq = item ? item.freq : 'monthly';
+  const freq = !item ? 'monthly' : isCustom(item) ? 'custom' : item.freq;
+  const customUnit = item && isCustom(item) ? item.freq : 'daily';
+  const customEvery = item && isCustom(item) ? everyOf(item) : 3;
 
   openSheet(`${item ? 'Bewerken' : tab.title}`, `
     <form onsubmit="saveItem(event, ${item ? `'${item.id}'` : 'null'})">
@@ -520,9 +558,17 @@ function openItemForm(id) {
       <div class="field">
         <span>Hoe vaak?</span>
         <div class="freq-picker">
-          ${['once', 'weekly', 'monthly', 'yearly'].map(f => `
+          ${['once', 'weekly', 'monthly', 'yearly', 'custom'].map(f => `
             <label><input type="radio" name="f-freq" value="${f}" ${f === freq ? 'checked' : ''}
-              onchange="updateFreqFields()" /><span>${FREQ[f]}</span></label>`).join('')}
+              onchange="updateFreqFields()" /><span>${FREQ[f] || 'Aangepast…'}</span></label>`).join('')}
+        </div>
+        <div class="custom-freq" id="f-custom">
+          <span>Om de</span>
+          <input id="f-every" type="number" inputmode="numeric" min="1" max="999" value="${customEvery}" aria-label="Aantal" />
+          <select id="f-unit" aria-label="Eenheid">
+            ${Object.entries(UNITS).map(([u, [, plural]]) =>
+              `<option value="${u}" ${u === customUnit ? 'selected' : ''}>${plural}</option>`).join('')}
+          </select>
         </div>
       </div>
       <label class="field">
@@ -551,6 +597,7 @@ function updateFreqFields() {
   const freq = document.querySelector('input[name="f-freq"]:checked').value;
   document.getElementById('f-date-label').textContent = freq === 'once' ? 'Datum' : 'Startdatum';
   document.getElementById('f-end-wrap').classList.toggle('hidden', freq === 'once');
+  document.getElementById('f-custom').classList.toggle('hidden', freq !== 'custom');
 }
 
 function saveItem(e, id) {
@@ -563,12 +610,22 @@ function saveItem(e, id) {
     alert('Vul een geldig bedrag in.');
     return;
   }
-  const freq = document.querySelector('input[name="f-freq"]:checked').value;
+  let freq = document.querySelector('input[name="f-freq"]:checked').value;
+  let every = 1;
+  if (freq === 'custom') {
+    freq = document.getElementById('f-unit').value;
+    every = parseInt(document.getElementById('f-every').value, 10);
+    if (!(every >= 1)) {
+      alert('Vul in om de hoeveel ' + UNITS[freq][1] + ' het terugkomt.');
+      return;
+    }
+  }
   const data = {
     name: document.getElementById('f-name').value.trim(),
     emoji: document.getElementById('f-emoji').value.trim(),
     amount,
     freq,
+    every,
     date: document.getElementById('f-date').value,
     endDate: freq === 'once' ? '' : document.getElementById('f-end').value,
   };

@@ -330,7 +330,23 @@ input { font: inherit; color: inherit; }
 .emoji-opt { font-size: 1.5rem; height: 44px; border-radius: 12px; background: var(--card2); border: 2px solid transparent; }
 .emoji-opt.sel { border-color: var(--accent); }
 
-.freq-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.freq-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+
+.custom-freq { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.custom-freq span { color: var(--text); font-weight: 600; white-space: nowrap; }
+.field .custom-freq input, .custom-freq select {
+  font: inherit;
+  background: var(--card2);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 1.05rem;
+  color: var(--text);
+  color-scheme: dark;
+}
+.field .custom-freq input { width: 80px; flex: none; text-align: center; }
+.custom-freq select { flex: 1; min-width: 0; }
+.custom-freq input:focus, .custom-freq select:focus { outline: none; border-color: var(--accent); }
 .freq-picker label { position: relative; }
 .freq-picker input { position: absolute; opacity: 0; pointer-events: none; }
 .freq-picker span {
@@ -363,7 +379,7 @@ input { font: inherit; color: inherit; }
 .menu { display: flex; flex-direction: column; gap: 8px; }
 .menu button { text-align: left; padding: 16px; border-radius: 14px; background: var(--card2); font-size: 1.05rem; }
 
-@media (max-width: 380px) {
+@media (max-width: 340px) {
   .freq-picker { grid-template-columns: repeat(2, 1fr); }
   .summary-big { font-size: 2.2rem; }
 }
