@@ -40,11 +40,7 @@ const TABS = {
     emoji: '🐷', placeholder: 'bv. Vakantie, Noodfonds, Nieuwe auto', done: 'opzij gezet' },
 };
 
-const ENV_EMOJIS = ['🏠', '💰', '👹', '🐸', '🌲', '🌆', '🌚', '🧬', '✈️', '🚗', '🎓', '🍕',
-  '🛒', '💼', '🎉', '🐶', '👶', '💍', '🏖️', '🎮', '🏦', '📦', '❤️', '⭐'];
-const ITEM_EMOJIS = ['🏠', '⚡', '💧', '🔥', '📱', '🌐', '🛒', '🚗', '⛽', '🚆', '🍕', '☕',
-  '🎬', '🎵', '🎮', '🏋️', '💊', '🐶', '👕', '🎁', '📚', '💳', '🧾', '✈️', '💼', '💶',
-  '🐷', '🏖️', '🎯', '🚨', '💍', '🎄'];
+const DEFAULT_ENV_EMOJI = '💰';
 
 const MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli',
   'augustus', 'september', 'oktober', 'november', 'december'];
@@ -446,21 +442,25 @@ function closeSheet() {
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 
-function emojiPicker(emojis, selected) {
+// Emoji kiezen via het toetsenbord van je telefoon (elke emoji kan)
+function emojiField(selected) {
   return `
     <div class="emoji-row">
-      <input class="emoji-input" id="f-emoji" maxlength="8" value="${esc(selected)}" aria-label="Emoji" />
-      <span class="hint">Kies of typ je eigen emoji</span>
-    </div>
-    <div class="emoji-grid">
-      ${emojis.map(e => `<button type="button" class="emoji-opt ${e === selected ? 'sel' : ''}"
-        onclick="pickEmoji(this)">${e}</button>`).join('')}
+      <input class="emoji-input" id="f-emoji" value="${esc(selected)}" aria-label="Emoji"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        onfocus="this.select()" oninput="keepLastEmoji(this)" />
+      <span class="hint">Tik op het vakje en kies een emoji op je toetsenbord (😀-toets)</span>
     </div>`;
 }
 
-function pickEmoji(btn) {
-  document.getElementById('f-emoji').value = btn.textContent;
-  document.querySelectorAll('.emoji-opt').forEach(b => b.classList.toggle('sel', b === btn));
+// Een nieuw gekozen emoji vervangt de vorige: bewaar enkel het laatste teken
+function keepLastEmoji(input) {
+  const text = input.value.trim();
+  const chars = typeof Intl !== 'undefined' && Intl.Segmenter
+    ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map(x => x.segment)
+    : Array.from(text);
+  const last = chars.length ? chars[chars.length - 1] : '';
+  if (input.value !== last) input.value = last;
 }
 
 // ----- Omgeving aanmaken / bewerken -----
@@ -468,7 +468,7 @@ function openEnvForm(id) {
   const env = id ? state.envs.find(e => e.id === id) : null;
   openSheet(`${env ? 'Omgeving bewerken' : 'Nieuwe omgeving'}`, `
     <form onsubmit="saveEnv(event, ${env ? `'${env.id}'` : 'null'})">
-      ${emojiPicker(ENV_EMOJIS, env ? env.emoji : ENV_EMOJIS[0])}
+      ${emojiField(env ? env.emoji : DEFAULT_ENV_EMOJI)}
       <label class="field">
         <span>Naam</span>
         <input id="f-name" required maxlength="60" placeholder="bv. Huishouden" value="${esc(env?.name)}" />
@@ -482,7 +482,7 @@ function openEnvForm(id) {
 function saveEnv(e, id) {
   e.preventDefault();
   const name = document.getElementById('f-name').value.trim();
-  const emoji = document.getElementById('f-emoji').value.trim() || '💰';
+  const emoji = document.getElementById('f-emoji').value.trim() || DEFAULT_ENV_EMOJI;
   if (!name) return;
 
   if (id) {
@@ -545,7 +545,7 @@ function openItemForm(id) {
 
   openSheet(`${item ? 'Bewerken' : tab.title}`, `
     <form onsubmit="saveItem(event, ${item ? `'${item.id}'` : 'null'})">
-      ${emojiPicker(ITEM_EMOJIS, item ? item.emoji : tab.emoji)}
+      ${emojiField(item ? item.emoji : tab.emoji)}
       <label class="field">
         <span>Omschrijving</span>
         <input id="f-name" required maxlength="80" placeholder="${tab.placeholder}" value="${esc(item?.name)}" />
@@ -622,7 +622,7 @@ function saveItem(e, id) {
   }
   const data = {
     name: document.getElementById('f-name').value.trim(),
-    emoji: document.getElementById('f-emoji').value.trim(),
+    emoji: document.getElementById('f-emoji').value.trim() || TABS[currentTab].emoji,
     amount,
     freq,
     every,

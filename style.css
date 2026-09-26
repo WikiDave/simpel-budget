@@ -314,7 +314,7 @@ input { font: inherit; color: inherit; }
 }
 .field input[type=date]::-webkit-date-and-time-value { text-align: left; }
 
-.emoji-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.emoji-row { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
 .emoji-input {
   width: 64px; height: 64px;
   text-align: center;
@@ -326,9 +326,6 @@ input { font: inherit; color: inherit; }
 .emoji-input:focus { outline: none; border-color: var(--accent); }
 .hint { color: var(--muted); font-size: .85rem; }
 
-.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; margin-bottom: 18px; }
-.emoji-opt { font-size: 1.5rem; height: 44px; border-radius: 12px; background: var(--card2); border: 2px solid transparent; }
-.emoji-opt.sel { border-color: var(--accent); }
 
 .freq-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 
