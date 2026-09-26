@@ -323,8 +323,13 @@ function togglePaid(key) {
 }
 
 // ===== BOTTOM SHEET =====
-function openSheet(html) {
-  document.getElementById('sheet-content').innerHTML = html;
+function openSheet(title, html) {
+  document.getElementById('sheet-content').innerHTML = `
+    <div class="sheet-header">
+      <button type="button" class="back-btn" onclick="closeSheet()" aria-label="Terug">‹ Terug</button>
+      <h2 class="sheet-title">${title}</h2>
+    </div>
+    ${html}`;
   document.getElementById('sheet').classList.remove('hidden');
   document.getElementById('sheet-backdrop').classList.remove('hidden');
   document.body.classList.add('no-scroll');
@@ -358,8 +363,7 @@ function pickEmoji(btn) {
 // ----- Omgeving aanmaken / bewerken -----
 function openEnvForm(id) {
   const env = id ? state.envs.find(e => e.id === id) : null;
-  openSheet(`
-    <h2 class="sheet-title">${env ? 'Omgeving bewerken' : 'Nieuwe omgeving'}</h2>
+  openSheet(`${env ? 'Omgeving bewerken' : 'Nieuwe omgeving'}`, `
     <form onsubmit="saveEnv(event, ${env ? `'${env.id}'` : 'null'})">
       ${emojiPicker(ENV_EMOJIS, env ? env.emoji : ENV_EMOJIS[0])}
       <label class="field">
@@ -367,6 +371,7 @@ function openEnvForm(id) {
         <input id="f-name" required maxlength="60" placeholder="bv. Huishouden" value="${esc(env?.name)}" />
       </label>
       <button class="primary" type="submit">${env ? 'Opslaan' : 'Aanmaken'}</button>
+      <button class="ghost" type="button" onclick="closeSheet()">Annuleren</button>
     </form>`);
   if (!env) setTimeout(() => document.getElementById('f-name').focus(), 50);
 }
@@ -393,8 +398,7 @@ function saveEnv(e, id) {
 
 function openEnvMenu() {
   const env = getEnv();
-  openSheet(`
-    <h2 class="sheet-title">${esc(env.emoji)} ${esc(env.name)}</h2>
+  openSheet(`${esc(env.emoji)} ${esc(env.name)}`, `
     <div class="menu">
       <button onclick="openEnvForm('${env.id}')">✏️ Naam & emoji wijzigen</button>
       <button onclick="duplicateEnv()">📄 Dupliceren</button>
@@ -434,8 +438,7 @@ function openItemForm(id) {
   const defaultDate = isNow ? dateKey(today) : dateKey(new Date(viewYear, viewMonth, 1));
   const freq = item ? item.freq : 'monthly';
 
-  openSheet(`
-    <h2 class="sheet-title">${item ? 'Bewerken' : (isCost ? 'Nieuwe kost' : 'Nieuw inkomen')}</h2>
+  openSheet(`${item ? 'Bewerken' : (isCost ? 'Nieuwe kost' : 'Nieuw inkomen')}`, `
     <form onsubmit="saveItem(event, ${item ? `'${item.id}'` : 'null'})">
       ${emojiPicker(ITEM_EMOJIS, item ? item.emoji : (isCost ? '🧾' : '💶'))}
       <label class="field">
@@ -464,6 +467,7 @@ function openItemForm(id) {
         <input id="f-end" type="date" value="${item?.endDate || ''}" />
       </label>
       <button class="primary" type="submit">${item ? 'Opslaan' : 'Toevoegen'}</button>
+      <button class="ghost" type="button" onclick="closeSheet()">Annuleren</button>
       ${item ? `<button class="ghost danger" type="button" onclick="deleteItem('${item.id}')">Verwijderen</button>` : ''}
     </form>`);
   updateFreqFields();

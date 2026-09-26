@@ -258,7 +258,17 @@ input { font: inherit; color: inherit; }
 @keyframes fade { from { opacity: 0; } }
 
 .sheet-handle { width: 40px; height: 5px; background: var(--border); border-radius: 3px; margin: 0 auto 14px; }
-.sheet-title { font-size: 1.4rem; margin-bottom: 16px; }
+.sheet-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.sheet-title { font-size: 1.4rem; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.back-btn {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--card2);
+  color: #60a5fa;
+  font-weight: 600;
+}
+.back-btn:active { background: var(--border); }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
 .field > span { color: var(--muted); font-size: .9rem; }
